@@ -263,8 +263,8 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
   H_(0,0) = 1;
   H_(1,1) = 1;
   MatrixXd R_ = MatrixXd::Zero(2,2);
-  R_(0,0) = std_laspx_;
-  R_(1,1) = std_laspy_;
+  R_(0,0) = std_laspx_*std_laspx_;
+  R_(1,1) = std_laspy_*std_laspy_;
   VectorXd z_pred = H_ * x_;  
 	VectorXd y = meas_package.raw_measurements_ - z_pred;
 	MatrixXd Ht = H_.transpose();
