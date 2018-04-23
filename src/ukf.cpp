@@ -72,6 +72,18 @@ UKF::UKF() {
 
   ///* initially set to false, set to true in first call of ProcessMeasurement
   is_initialized_ = false;
+
+  H_Laser = MatrixXd::Zero(2,5);
+  H_Laser(0,0) = 1;
+  H_Laser(1,1) = 1;
+  R_Laser = MatrixXd::Zero(2,2);
+  R_Laser(0,0) = std_laspx_*std_laspx_;
+  R_Laser(1,1) = std_laspy_*std_laspy_;
+
+  R_Radar = MatrixXd::Zero(3,3);
+  R_Radar<<std_radr_*std_radr_, 0, 0,
+    0, std_radphi_*std_radphi_, 0,
+    0, 0, std_radrd_*std_radrd_;
 }
 
 UKF::~UKF() {}
@@ -98,23 +110,30 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
       * Remember: you'll need to convert radar from polar to cartesian coordinates.
     */
     // first measurement
-    P_ <<0.15, 0, 0, 0, 0,
-			  0, 0.15, 0, 0, 0,
-			  0, 0, 1.0, 0, 0,
-			  0, 0, 0, 1.0, 0,
-        0, 0, 0, 0, 1.0;
     
     if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
       /**
       Convert radar from polar to cartesian coordinates and initialize state.
       */
-      x_ << meas_package.raw_measurements_[0]*cos(meas_package.raw_measurements_[1]), meas_package.raw_measurements_[0]*sin(meas_package.raw_measurements_[1]), 0, 0, 0;
+
+      P_ <<std_radr_*std_radr_, 0, 0, 0, 0,
+			  0, std_radr_*std_radr_, 0, 0, 0,
+			  0, 0, 1.0, 0, 0,
+			  0, 0, 0, 1.0, 0,
+        0, 0, 0, 0, 1.0;
+      x_ << meas_package.raw_measurements_[0]*cos(meas_package.raw_measurements_[1]), meas_package.raw_measurements_[0]*sin(meas_package.raw_measurements_[1]), 3, meas_package.raw_measurements_[1], meas_package.raw_measurements_[1];
     }
     else if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
       /**
       Initialize state.
       */
-      x_ << meas_package.raw_measurements_[0], meas_package.raw_measurements_[1], 0, 0, 0;
+
+      P_ <<std_laspx_*std_laspx_, 0, 0, 0, 0,
+			  0, std_laspx_*std_laspx_, 0, 0, 0,
+			  0, 0, 1.0, 0, 0,
+			  0, 0, 0, 1.0, 0,
+        0, 0, 0, 0, 1.0;
+      x_ << meas_package.raw_measurements_[0], meas_package.raw_measurements_[1], 3, 0.5, 0;
     }
     // done initializing, no need to predict or update
   
@@ -259,16 +278,11 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
 
   You'll also need to calculate the lidar NIS.
   */
-  MatrixXd H_ = MatrixXd::Zero(2,5);
-  H_(0,0) = 1;
-  H_(1,1) = 1;
-  MatrixXd R_ = MatrixXd::Zero(2,2);
-  R_(0,0) = std_laspx_*std_laspx_;
-  R_(1,1) = std_laspy_*std_laspy_;
-  VectorXd z_pred = H_ * x_;  
+  
+  VectorXd z_pred = H_Laser * x_;  
 	VectorXd y = meas_package.raw_measurements_ - z_pred;
-	MatrixXd Ht = H_.transpose();
-	MatrixXd S = H_ * P_ * Ht + R_;
+	MatrixXd Ht = H_Laser.transpose();
+	MatrixXd S = H_Laser * P_ * Ht + R_Laser;
 	MatrixXd Si = S.inverse();
 	MatrixXd PHt = P_ * Ht;
 	MatrixXd K = PHt * Si;
@@ -276,7 +290,7 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
 	x_ = x_ + (K * y);
 	long x_size = x_.size();
 	MatrixXd I = MatrixXd::Identity(x_size, x_size);
-	P_ = (I - (K * H_)) * P_;
+	P_ = (I - (K * H_Laser)) * P_;
 }
 
 /**
@@ -301,12 +315,6 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   
   //measurement covariance matrix S
   MatrixXd S = MatrixXd(n_z,n_z);
-
-
-  MatrixXd R = MatrixXd::Zero(3,3);
-  R<<std_radr_*std_radr_, 0, 0,
-    0, std_radphi_*std_radphi_, 0,
-    0, 0, std_radrd_*std_radrd_;
   double rho, phi, rho_dot;
   for(int i=0; i<2 * n_aug_ + 1; i++ ){
     VectorXd data = Xsig_pred_.col(i);
@@ -317,27 +325,24 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   }
   z_pred.fill(0.0);
   z_pred = (Zsig.array().rowwise() * weights_.transpose().array()).rowwise().sum();
-  MatrixXd intermediate = Zsig.colwise()-z_pred;
+  MatrixXd z_diff = Zsig.colwise()-z_pred;
   for(int i=0; i<2 * n_aug_ + 1; i++ ){
-    VectorXd temp1 = intermediate.col(i);
-    intermediate.col(i)[1]= atan2(sin(temp1(1)),cos(temp1(1))); 
+    z_diff.col(i)[1]= atan2(sin(z_diff.col(i)(1)),cos(z_diff.col(i)(1))); 
   }
   
-  MatrixXd intermediateT = intermediate.transpose();
-  MatrixXd rowMulti = (intermediate.array().rowwise() * weights_.transpose().array());
+  MatrixXd z_diff_transpose = z_diff.transpose();
+  MatrixXd weight_z_diff = (z_diff.array().rowwise() * weights_.transpose().array());
   S.fill(0.0);
-  S = rowMulti*intermediateT+R;
+  S = weight_z_diff*z_diff_transpose+R_Radar;
 
   MatrixXd Tc = MatrixXd(n_x_, n_z);
-  MatrixXd intermediate1 = Xsig_pred_.colwise()-x_;
-  MatrixXd intermediate2 = (Zsig.colwise()-z_pred).transpose();
+  MatrixXd x_diff = Xsig_pred_.colwise()-x_;
   for(int i=0; i<2 * n_aug_ + 1; i++ ){
-     intermediate1.col(i)[3]= atan2(sin(intermediate1.col(i)(3)),cos(intermediate1.col(i)(3))); 
-     intermediate2.row(i)[1]= atan2(sin(intermediate2.row(i)(1)),cos(intermediate2.row(i)(1))); 
+     x_diff.col(i)[3]= atan2(sin(x_diff.col(i)(3)),cos(x_diff.col(i)(3))); 
   }
-  MatrixXd intermediate3 = (intermediate1.array().rowwise() * weights_.transpose().array());
+  MatrixXd weight_x_diff = (x_diff.array().rowwise() * weights_.transpose().array());
   Tc.fill(0.0);
-  Tc = Tc + intermediate3*intermediate2;
+  Tc = Tc + weight_x_diff*z_diff_transpose;
   MatrixXd K = Tc*S.inverse();
   x_ = x_ + K*(meas_package.raw_measurements_ - z_pred);
   P_ = P_ - K * S * K.transpose();
