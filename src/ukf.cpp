@@ -121,7 +121,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
 			  0, 0, 1.0, 0, 0,
 			  0, 0, 0, 1.0, 0,
         0, 0, 0, 0, 1.0;
-      x_ << meas_package.raw_measurements_[0]*cos(meas_package.raw_measurements_[1]), meas_package.raw_measurements_[0]*sin(meas_package.raw_measurements_[1]), 3, meas_package.raw_measurements_[1], meas_package.raw_measurements_[1];
+      x_ << meas_package.raw_measurements_[0]*cos(meas_package.raw_measurements_[1]), meas_package.raw_measurements_[0]*sin(meas_package.raw_measurements_[1]), 3, meas_package.raw_measurements_[1], 0;
     }
     else if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
       /**
@@ -291,6 +291,7 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
 	long x_size = x_.size();
 	MatrixXd I = MatrixXd::Identity(x_size, x_size);
 	P_ = (I - (K * H_Laser)) * P_;
+  NIS_L = y.transpose()*Si*y;
 }
 
 /**
@@ -344,6 +345,8 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   Tc.fill(0.0);
   Tc = Tc + weight_x_diff*z_diff_transpose;
   MatrixXd K = Tc*S.inverse();
-  x_ = x_ + K*(meas_package.raw_measurements_ - z_pred);
+  VectorXd y = meas_package.raw_measurements_ - z_pred;
+  x_ = x_ + K * y;
   P_ = P_ - K * S * K.transpose();
+  NIS_R = y.transpose()*S.inverse()*y;
 }

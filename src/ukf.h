@@ -73,6 +73,10 @@ public:
 
   MatrixXd R_Radar;
 
+  double NIS_L;
+
+  double NIS_R;
+
 
   /**
    * Constructor
