@@ -12,7 +12,3 @@ Self-Driving Car Engineer Nanodegree Program
 ![alt text](./images/nis_radar.png)
 
 
-
-* NIS plot for Lidar
-
-![alt text](./images/nis_lidar.png)
